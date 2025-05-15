@@ -1,12 +1,15 @@
 // Library imports
-import { JSX } from 'react'
+import * as React from 'react'
+import { Button } from "@/components/ui/button"
+
 
 // App level imports
 
-export const About = (): JSX.Element => {
+export const About = () => {
   return (
     <div>
       <h3>About</h3>
+      <Button>Click me</Button>
       About, about us
     </div>
   )
