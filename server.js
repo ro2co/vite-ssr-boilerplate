@@ -1,5 +1,11 @@
-import fs from 'node:fs/promises'
-import express from 'express'
+import fs from 'node:fs/promises' // NodeJS async file system module, 'interact' static files
+import express from 'express' // Express is NodeJS library for building api
+
+/**
+  This file is used to set up a NodeJS Express server to handle SSR for our React application. It dynamically selects the appropriate SSR render function and template based on the environment (development or production) and serves the rendered HTML to clients upon request.
+
+  The server is set up to serve the client-side assets in production and use Vite's middleware in development. The server also reads the SSR manifest file in production to determine the appropriate render function to use.
+ */
 
 // Constants
 const isProduction = process.env.NODE_ENV === 'production'
@@ -10,14 +16,17 @@ const base = process.env.BASE || '/'
 const templateHtml = isProduction
   ? await fs.readFile('./dist/client/index.html', 'utf-8')
   : ''
+const ssrManifest = isProduction
+  ? await fs.readFile('./dist/client/.vite/manifest.json', 'utf-8')
+  : undefined
 
 // Create http server
 const app = express()
 
 // Add Vite or respective production middlewares
-/** @type {import('vite').ViteDevServer | undefined} */
 let vite
 if (!isProduction) {
+  // 开发模式
   const { createServer } = await import('vite')
   vite = await createServer({
     server: { middlewareMode: true },
@@ -25,7 +34,22 @@ if (!isProduction) {
     base,
   })
   app.use(vite.middlewares)
+
+  app.use(async (req, res, next) => {
+    try {
+      // Custom middleware logic
+      next()
+    } catch (error) {
+      const statusCode = error.status || 500
+      const html = await vite.transformIndexHtml(
+        req.url,
+        `<h1>${statusCode} Error</h1>`
+      )
+      res.status(statusCode).set({ 'Content-Type': 'text/html' }).end(html)
+    }
+  })
 } else {
+  // 生产环境
   const compression = (await import('compression')).default
   const sirv = (await import('sirv')).default
   app.use(compression())
@@ -33,25 +57,31 @@ if (!isProduction) {
 }
 
 // Serve HTML
+// "*home" is Express 5.x syntax for matching all routes
 app.use('*all', async (req, res) => {
   try {
-    const url = req.originalUrl.replace(base, '')
+    let url = req.originalUrl.replace(base, '')
+    if (!url.startsWith('/')) {
+      url = '/' + url
+    }
 
-    /** @type {string} */
     let template
-    /** @type {import('./src/entry-server.ts').render} */
     let render
     if (!isProduction) {
+      // 开发模式
       // Always read fresh template in development
       template = await fs.readFile('./index.html', 'utf-8')
       template = await vite.transformIndexHtml(url, template)
       render = (await vite.ssrLoadModule('/src/entry-server.tsx')).render
     } else {
+      // 生产模式
       template = templateHtml
       render = (await import('./dist/server/entry-server.js')).render
     }
+    
+    const rendered = await render(url, ssrManifest)
 
-    const rendered = await render(url)
+    console.log({rendered})
 
     const html = template
       .replace(`<!--app-head-->`, rendered.head ?? '')
