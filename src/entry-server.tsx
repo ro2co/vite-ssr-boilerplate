@@ -1,5 +1,6 @@
+import React from 'react'
 import { renderToString } from 'react-dom/server'
-import { Router } from './router.tsx'
+import { Router } from './router'
 import { StaticRouter } from 'react-router-dom/server'
 
 export function render(url: string) {
